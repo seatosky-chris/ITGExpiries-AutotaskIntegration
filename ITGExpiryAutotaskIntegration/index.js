@@ -262,7 +262,7 @@ module.exports = async function (context, req) {
             detailedNotes = 'Additional Details \n';
             detailedNotes += '-----------------------\n';
             if (ipAddress) {
-                detailedNotes += `Host IP Address: ${ipAddress}`;
+                detailedNotes += `Host IP Address: ${ipAddress} \n`;
             }
             detailedNotes += `Expires On: ${expiresOn.toLocaleDateString('en-ca', { weekday:"long", year:"numeric", month:"short", day:"numeric"})} \n`;
             detailedNotes += `ITG Url: ${resourceUrl}`;
