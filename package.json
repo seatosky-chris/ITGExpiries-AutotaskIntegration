@@ -1,0 +1,15 @@
+{
+  "name": "itgexpiries-autotaskintegration",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"No tests yet...\""
+  },
+  "dependencies": {
+    "@apigrate/autotask-restapi": "^0.5.1",
+    "node-itglue": "^1.0.2",
+    "node-fetch-commonjs": "^3.1.1"
+  },
+  "devDependencies": {}
+}
