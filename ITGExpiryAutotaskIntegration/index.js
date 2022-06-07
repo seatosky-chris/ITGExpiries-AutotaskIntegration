@@ -2,6 +2,7 @@ const {AutotaskRestApi} = require('@apigrate/autotask-restapi');
 const ITGlue = require('node-itglue');
 const fetch = require("node-fetch-commonjs");
 const dns = require('dns');
+const https = require('https');
 
 module.exports = async function (context, req) {
     const params = new URLSearchParams(req.body);
@@ -243,6 +244,7 @@ module.exports = async function (context, req) {
         });
 
         var ipAddress = null;
+        var certIssuer = null;
         if (!resourceName.startsWith("*")) {
             // Get more info on the cert if it is connected to a domain
             try {
@@ -250,6 +252,18 @@ module.exports = async function (context, req) {
             } catch(err) {
                 console.log.warn(`${resourceName} is not a valid domain. IP lookup failed.`);
             }
+
+            certIssuer = await sslIssuerLookupFromDomain(resourceName);
+        }
+
+        if (certIssuer && certIssuer == "Let\'s Encrypt") {
+            context.log.warn("SSL Cert '" + resourceName + "' is registered with Let's Encrypt. Exiting...");
+            context.res = {
+                status: 400,
+                body: "SSL Cert '" + resourceName + "' is registered with Let's Encrypt. Exiting..."
+            };
+            context.done();
+            return;
         }
 
         var expiresOn;
@@ -263,6 +277,9 @@ module.exports = async function (context, req) {
             detailedNotes += '-----------------------\n';
             if (ipAddress) {
                 detailedNotes += `Host IP Address: ${ipAddress} \n`;
+            }
+            if (certIssuer) {
+                detailedNotes += `Issuer: ${certIssuer} \n`;
             }
             detailedNotes += `Expires On: ${expiresOn.toLocaleDateString('en-ca', { weekday:"long", year:"numeric", month:"short", day:"numeric"})} \n`;
             detailedNotes += `ITG Url: ${resourceUrl}`;
@@ -294,7 +311,7 @@ module.exports = async function (context, req) {
 
     var ticketID = null;
     try {
-        result = await api.Tickets.create(newTicket);
+        //result = await api.Tickets.create(newTicket);
         ticketID = result.itemId;
         if (!ticketID) {
             throw "No ticket ID";
@@ -350,3 +367,37 @@ async function ipLookupFromDomain(domain) {
         });
     });
 };
+
+async function sslIssuerLookupFromDomain(domain) {
+    const options = {
+        hostname: domain,
+        port: 443,
+        method: 'get',
+        headers: {
+            'User-Agent': 'Node/https'
+        },
+        //disable session caching   (ノ°Д°）ノ︵ ┻━┻
+        agent: new https.Agent({
+            maxCachedSessions: 0
+        })
+    };
+
+    return new Promise((resolve, reject) => {
+        let req = https.request(options);
+
+        req.on('error', reject);
+
+        req.on('socket', function(socket) {
+            socket.on('secureConnect', function() {
+                let certInfo = socket.getPeerCertificate();
+
+                if (certInfo && certInfo.issuer && certInfo.issuer.O) {
+                    resolve(certInfo.issuer.O);
+                } else {
+                    resolve(null);
+                }
+            });
+        });
+        req.end();
+    });
+}
