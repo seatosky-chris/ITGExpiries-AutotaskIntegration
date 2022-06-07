@@ -311,7 +311,7 @@ module.exports = async function (context, req) {
 
     var ticketID = null;
     try {
-        //result = await api.Tickets.create(newTicket);
+        result = await api.Tickets.create(newTicket);
         ticketID = result.itemId;
         if (!ticketID) {
             throw "No ticket ID";
