@@ -204,6 +204,14 @@ module.exports = async function (context, req) {
             context.log.error(error);
         });
 
+        if (itgDomainInfo.attributes.notes && itgDomainInfo.attributes.notes.includes("# Ignore Alerts")) {
+            context.res = {
+                body: "The expiring domain '" + resourceName + "' was ignored. Exiting..."
+            };
+            context.done();
+            return;
+        }
+
         var expiresOn;
         if (itgDomainInfo) {
             expiresOn = new Date(itgDomainInfo.attributes["expires-on"]);
