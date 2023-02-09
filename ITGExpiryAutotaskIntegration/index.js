@@ -261,7 +261,9 @@ module.exports = async function (context, req) {
             if (itgDomainInfo.attributes["notes"]) {
                 detailedNotes += `Notes: ${itgDomainInfo.attributes["notes"]} \n`;
             }
-            detailedNotes += `Expires On: ${expiresOn.toLocaleDateString('en-ca', { weekday:"long", year:"numeric", month:"short", day:"numeric"})} \n`;
+            if (expiresOn) {
+                detailedNotes += `Expires On: ${expiresOn.toLocaleDateString('en-ca', { weekday:"long", year:"numeric", month:"short", day:"numeric"})} \n`;
+            }
             detailedNotes += `ITG Url: ${resourceUrl}`;
         }
 
@@ -349,9 +351,11 @@ module.exports = async function (context, req) {
         ServiceLevelAgreementID: parseInt(process.env.TICKET_ServiceLevelAgreementID),
         ContractID: (contractID ? contractID : null),
         Title: title,
-        Description: description,
-        DueDateTime: expiresOn.toISOString()
+        Description: description
     };
+    if (expiresOn) {
+        newTicket.DueDateTime = expiresOn.toISOString()
+    }
 
     var ticketID = null;
     try {
