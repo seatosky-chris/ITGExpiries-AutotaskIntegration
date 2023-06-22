@@ -1,3 +1,21 @@
+/**
+ * File: \ITGExpiryAutotaskIntegration\index.js
+ * Project: itgexpiries-autotaskintegration
+ * Created Date: Tuesday, August 2nd 2022, 10:01:30 am
+ * Author: Chris Jantzen
+ * -----
+ * Last Modified: Fri Feb 10 2023
+ * Modified By: Chris Jantzen
+ * -----
+ * Copyright (c) 2023 Sea to Sky Network Solutions
+ * License: MIT License
+ * -----
+ * 
+ * HISTORY:
+ * Date      	By	Comments
+ * ----------	---	----------------------------------------------------------
+ */
+
 const {AutotaskRestApi} = require('@apigrate/autotask-restapi');
 const ITGlue = require('node-itglue');
 const fetch = require("node-fetch-commonjs");
@@ -15,6 +33,7 @@ module.exports = async function (context, req) {
     const resourceUrl = (params && params.get('resourceUrl'));
 
     context.log(`Test Type: ${testType}, Org: ${organizationName}, Resource: ${resourceName}, Time To Expiry: ${resourceTimeToExpiry}, URL: ${resourceUrl}`);
+    context.log(`Original Url: ${req.originalUrl}, Method: ${req.method}, Headers: ${JSON.stringify(req.headers)}`);
 
     const responseMessage = resourceName
         ? "Test: '" + testType + "' on '" + resourceName + "' was triggered. Org: " + organizationName +
@@ -294,12 +313,21 @@ module.exports = async function (context, req) {
         if (!resourceName.startsWith("*")) {
             // Get more info on the cert if it is connected to a domain
             try {
+                context.log(`Attempting to lookup ip from the domain: ${resourceName}`)
                 ipAddress = await ipLookupFromDomain(resourceName);
             } catch(err) {
-                console.log.warn(`${resourceName} is not a valid domain. IP lookup failed.`);
+                context.log.warn(`${resourceName} is not a valid domain. IP lookup failed.`);
             }
+            context.log('IP Lookup for domain complete.')
 
-            certIssuer = await sslIssuerLookupFromDomain(resourceName);
+            /// TODO: Perhaps only do this if we successfully got ipAddress info above
+            try {
+                context.log(`Attempting to lookup SSL Issuer from the domain: ${resourceName}`)
+                certIssuer = await sslIssuerLookupFromDomain(resourceName);
+            } catch (err) {
+                context.log.warn(`SSL Issuer lookup failed for: ${resourceName}`);
+            }
+            context.log('SSL Issuer Lookup for domain complete.')
         }
 
         if (certIssuer && certIssuer == "Let\'s Encrypt") {
