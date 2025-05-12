@@ -26,14 +26,14 @@ app.http('ITGExpiryAutotaskIntegration', {
     methods: ['GET', 'POST'],
     authLevel: 'function',
     handler: async (req, context) => {
-        const params = new URLSearchParams(req.query);
         context.log('JavaScript HTTP trigger function processed a request.');
+        const params = await req.json();
 
-        const testType = (params && params.get('testType'));
-        const organizationName = (params && params.get('organizationName'));
-        const resourceName = (params && params.get('resourceName'));
-        const resourceTimeToExpiry = (params && params.get('resourceTimeToExpiry'));
-        const resourceUrl = (params && params.get('resourceUrl'));
+        const testType = (params && params.testType);
+        const organizationName = (params && params.organizationName);
+        const resourceName = (params && params.resourceName);
+        const resourceTimeToExpiry = (params && params.resourceTimeToExpiry);
+        const resourceUrl = (params && params.resourceUrl);
 
         context.log(`Test Type: ${testType}, Org: ${organizationName}, Resource: ${resourceName}, Time To Expiry: ${resourceTimeToExpiry}, URL: ${resourceUrl}`);
         context.log(`Original Url: ${req.url}, Method: ${req.method}`);
