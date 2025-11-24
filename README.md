@@ -1,10 +1,10 @@
 # ITGlue Expiries - Autotask Integration
 
-This script is used to watch for IT Glue expiry workflows (for Domains and SSL Certificates) and handles ticket creation in Autotask. This script is designed to be ran in an Azure function. You then grab the URL of the Azure function and plug that into the Webhook field of the workflow in ITG. When an alert comes up, the script will create a new ticket in Autotask via the API. If the script cannot connect to the Autotask API, it will fallback to sending an email to an address of your choice.
+This script is used to watch for IT Glue expiry workflows (for Domains, SSL Certificates and Flexible Assets) and handles ticket creation in Autotask. This script is designed to be ran in an Azure function. You then grab the URL of the Azure function and plug that into the Webhook field of the workflow in ITG. When an alert comes up, the script will create a new ticket in Autotask via the API. If the script cannot connect to the Autotask API, it will fallback to sending an email to an address of your choice.
 
 ### ITG Workflow Setup
 To create a proper workflow in ITG:
-- Create a new workflow with either the "Domain Expiration" or "SSL Expiration" trigger type. Set the "lead time" to how many days before expiry you want the notification.
+- Create a new workflow with either the "Domain Expiration", "SSL Expiration" or "Flexible Asset" trigger type. Set the "lead time" to how many days before expiry you want the notification.
 - Choose the "Webhook" action type. Set the "Webhook URL" to the full URL of the Azure function. Use following JSON payload options:
     - resourceName: [resource_name]
     - resourceUrl: [resource_url]

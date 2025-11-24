@@ -44,7 +44,7 @@ app.http('ITGExpiryAutotaskIntegration', {
                 " \n Url: " + resourceUrl
             : "This HTTP triggered function executed successfully.";
 
-        if (testType != "Domain Expiry" && testType != "SSL Expiry") {
+        if (testType != "Domain Expiry" && testType != "SSL Expiry" && testType != "Flexible Asset Expiry") {
             context.warn("Test Type '" + testType + "' is not supported. Exiting...");
             context.error("testType: " + testType + ", orgName: " + organizationName + ", resourceName: " + resourceName + ", timeToExpiry: " + resourceTimeToExpiry + ", resourceUrl: " + resourceUrl);
             return {
@@ -362,6 +362,54 @@ app.http('ITGExpiryAutotaskIntegration', {
                 description += `Organization: ${organizationName}\n`;
             }
             description += `The ssl cert '${resourceName}' is expiring in ${resourceTimeToExpiry}. \n\n\n${detailedNotes}`;
+        } else if (testType == "Flexible Asset Expiry") {
+            var match = resourceUrl.match(/(?:\/)(\d+?)(?:$)/);
+            var assetID = match[1];
+
+            let flexAssetInfo;
+            let flexAssets = await itg2.flexibleAssets.show(assetID);
+            if (flexAssets && flexAssets.data) {
+                flexAssetInfo = flexAssets.data;
+            } else {
+                context.error("Could not get the flex asset from ITGlue.");
+            }
+
+            const expiries = {};
+            if (flexAssetInfo) {
+                Object.entries(flexAssetInfo.attributes.traits)
+                    .filter(([key]) => key.toLowerCase().includes('expiry') || key.toLowerCase().includes('expire'))
+                    .forEach(([key, value]) => {
+                        const date = new Date(value);
+                        if (!isNaN(date.getTime())) {
+                            expiries[key] = date;
+                        }
+                    });
+            }
+
+            let expiresOn = findSoonestFutureDate(expiries);
+
+            var detailedNotes = "";
+            if (flexAssetInfo) {
+                detailedNotes = 'Additional Details \n';
+                detailedNotes += '-----------------------\n';
+                if (flexAssetInfo.attributes["notes"]) {
+                    detailedNotes += `Notes: ${flexAssetInfo.attributes.traits["notes"]} \n`;
+                }
+                if (expiries) {
+                    detailedNotes += `Related Expiry Dates: \n`
+                    Object.entries(expiries).forEach(([key, date]) => {
+                        detailedNotes += `${formatAttributeName(key)}: ${date.toLocaleDateString('en-ca', { weekday:"long", year:"numeric", month:"short", day:"numeric"})}\n`;
+                    });
+                }
+                detailedNotes += `ITG Url: ${resourceUrl}`;
+            }
+
+            var title = `Upcoming Expiry - ${flexAssetInfo.attributes["flexible-asset-type-name"]}: ${resourceName}`;
+            var description = `Alert from IT Glue.\n`;
+            if (autotaskCompanies[0].id == 0) {
+                description += `Organization: ${organizationName}\n`;
+            }
+            description += `The '${flexAssetInfo.attributes["flexible-asset-type-name"]}' asset '${resourceName}' is expiring in ${resourceTimeToExpiry}. \n\n\n${detailedNotes}`;
         }
 
         // Make a new ticket
@@ -476,3 +524,40 @@ async function sslIssuerLookupFromDomain(domain) {
         req.end();
     });
 }
+
+/**
+ * Finds the soonest future date from an object containing date properties.
+ * @param {Object} dateObject - Object containing date properties to search through
+ * @returns {Date|null} - Soonest future date, or null if none found
+ */
+const findSoonestFutureDate = (dateObject) => {
+    const now = new Date();
+    
+    // Filter for future dates
+    const futureDates = Object.entries(dateObject)
+        .map(([key, date]) => date)
+        .filter(date => date > now);
+
+    // Return null if no future dates exist
+    if (futureDates.length === 0) {
+        return null;
+    }
+
+    // Find the earliest future date
+    return futureDates.reduce((earliest, current) => 
+        current < earliest ? current : earliest
+    );
+};
+
+/**
+ * Formats an ITG attribute name into a readable format for output into the ticket description
+ * You can add custom replacements to format specific things nicely (e.g. see the VPP/APN code)
+ * @param {string} key - The attribute name or key
+ * @returns {string} - The formatted name
+ */
+const formatAttributeName = (key) => {
+    let formattedKey = key.replace(/-/g, ' ');
+    formattedKey = formattedKey.replace(/\bvpp\b/gi, 'VPP');
+    formattedKey = formattedKey.replace(/\bapn\b/gi, 'APN');
+    return formattedKey;
+};
