@@ -4,7 +4,7 @@
  * Created Date: Tuesday, August 2nd 2022, 10:01:30 am
  * Author: Chris Jantzen
  * -----
- * Last Modified: Mon Dec 01 2025
+ * Last Modified: Tue Dec 02 2025
  * Modified By: Chris Jantzen
  * -----
  * Copyright (c) 2023 Sea to Sky Network Solutions
@@ -367,12 +367,15 @@ app.http('ITGExpiryAutotaskIntegration', {
             var assetID = match[1];
 
             let flexAssetInfo;
-            let flexAssets = await itg.flexibleAssets.show(assetID);
-            if (flexAssets && flexAssets.data) {
-                flexAssetInfo = flexAssets.data;
-            } else {
-                context.error("Could not get the flex asset from ITGlue.");
-            }
+            await itg.get({path: "flexible_assets/" + assetID})
+            .then(result => {
+                if (result && result.data) {
+                    flexAssetInfo = result.data;
+                }
+            })
+            .catch(error => {
+                context.error(error);
+            });
 
             const expiries = {};
             if (flexAssetInfo) {
