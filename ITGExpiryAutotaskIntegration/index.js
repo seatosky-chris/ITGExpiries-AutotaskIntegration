@@ -14,6 +14,8 @@
  * HISTORY:
  * Date      	By	Comments
  * ----------	---	----------------------------------------------------------
+ * 2026-03-20	CJ	Removed contractID from the ticket creation and leaving Autotask to auto-assign it
+ * 2026-03-20	CJ	Replaced the node-itglue npm module with @panoptic-it-solutions/itglue-client
  */
 
 const { app } = require('@azure/functions');
@@ -199,8 +201,7 @@ app.http('ITGExpiryAutotaskIntegration', {
             ];
         }
 
-        // Get primary location and default contract
-        var contractID = null;
+        // Get primary location
         var location = null;
         if (useAutotaskAPI && autotaskCompanies && autotaskCompanies.length == 1) {
             let locations = await autotask.CompanyLocations.query({
@@ -227,31 +228,6 @@ app.http('ITGExpiryAutotaskIntegration', {
                 }
             } else {
                 location = locations[0];
-            }
-
-            let contract = await autotask.Contracts.query({
-                filter: [
-                    {
-                        "op": "and",
-                        "items": [
-                            {
-                                "op": "eq",
-                                "field": "CompanyID",
-                                "value": autotaskCompanies[0].id
-                            },
-                            {
-                                "op": "eq",
-                                "field": "IsDefaultContract",
-                                "value": true
-                            }
-                        ]
-                    }
-                ],
-                includeFields: [ "id" ]
-            });
-            
-            if (contract.items.length > 0) {
-                contractID = contract.items[0].id
             }
         }
 
@@ -470,7 +446,6 @@ app.http('ITGExpiryAutotaskIntegration', {
             IssueType: parseInt(process.env.TICKET_IssueType),
             SubIssueType: parseInt(process.env.TICKET_SubIssueType),
             ServiceLevelAgreementID: parseInt(process.env.TICKET_ServiceLevelAgreementID),
-            ContractID: (contractID ? contractID : null),
             Title: title,
             Description: description
         };
