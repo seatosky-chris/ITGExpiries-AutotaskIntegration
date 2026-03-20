@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "@apigrate/autotask-restapi": "^2.0.1",
-    "node-itglue": "^1.0.2",
-    "@azure/functions": "^4.7.0"
-  },
-  "devDependencies": {}
+    "@azure/functions": "^4.11.2",
+    "@panoptic-it-solutions/itglue-client": "^1.2.2"
+  }
 }

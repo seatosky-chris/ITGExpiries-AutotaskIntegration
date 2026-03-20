@@ -4,7 +4,7 @@
  * Created Date: Tuesday, August 2nd 2022, 10:01:30 am
  * Author: Chris Jantzen
  * -----
- * Last Modified: Tue Dec 02 2025
+ * Last Modified: Fri Mar 20 2026
  * Modified By: Chris Jantzen
  * -----
  * Copyright (c) 2023 Sea to Sky Network Solutions
@@ -18,12 +18,12 @@
 
 const { app } = require('@azure/functions');
 const {AutotaskRestApi} = require('@apigrate/autotask-restapi');
-const ITGlue = require('node-itglue');
+const { ITGlueClient } = require('@panoptic-it-solutions/itglue-client');
 const dns = require('dns');
 const https = require('https');
 
 app.http('ITGExpiryAutotaskIntegration', {
-    methods: ['GET', 'POST'],
+    methods: ['POST'],
     authLevel: 'function',
     handler: async (req, context) => {
         context.log('JavaScript HTTP trigger function processed a request.');
@@ -62,10 +62,10 @@ app.http('ITGExpiryAutotaskIntegration', {
         );
 
         // Connect to the ITG API
-        const itg = new ITGlue({
-            apikey: process.env.ITG_API_KEY,
-            timeout: 10000,
-            mode: 'apikey'
+        const itgclient = new ITGlueClient(process.env.ITG_API_KEY, {
+            baseURL: 'https://api.itglue.com',
+            timeout: 20000, // request timeout in ms
+            retries: 3 // number of retries on failure
         });
 
         // Verify the Autotask API key works (the library doesn't always provide a nice error message)
@@ -103,18 +103,29 @@ app.http('ITGExpiryAutotaskIntegration', {
         }
 
         // Get org info from ITG
-        let itgCompany;
-        await itg.get({path: "organizations", params: {
-            "filter[name]": organizationName
-        }})
-        .then(result => {
-            if (result.data && result.data[0]) {
-                itgCompany = result.data[0];
+        let itgOrganization;
+
+        try {
+            const itgOrgs = await itgclient.organizations.list({
+                filters: { name: organizationName }
+            })
+
+            itgOrganization = itgOrgs?.data?.[0];
+
+            if (!itgOrganization) {
+                context.error(`Could not find organization '${organizationName}' in ITGlue data.`);
             }
-        })
-        .catch(error => {
-            context.error(error);
-        });
+        } catch (error) {
+            context.error('API Error getting Organization:', error?.message || error);
+        }
+
+        if (!itgOrganization) {
+            context.error(`No organization information found for '${organizationName}'. Exiting...`);
+            return {
+                status: 404,
+                body: `No organization information found for '${organizationName}'. Exiting...`
+            };
+        }
 
         // Find company in Autotask
         let autotaskCompanies = false;
@@ -132,7 +143,7 @@ app.http('ITGExpiryAutotaskIntegration', {
                 ]
             }); 
 
-            if ((!autotaskCompanies || autotaskCompanies.items.length < 1) && itgCompany && itgCompany["short-name"]) {
+            if ((!autotaskCompanies || autotaskCompanies.items.length < 1) && itgOrganization && itgOrganization["short-name"]) {
                 autotaskCompanies = await autotask.Companies.query({
                     filter: [
                         {
@@ -141,12 +152,12 @@ app.http('ITGExpiryAutotaskIntegration', {
                                 {
                                     "op": "eq",
                                     "field": "CompanyNumber",
-                                    "value": itgCompany["short-name"]
+                                    "value": itgOrganization["short-name"]
                                 },
                                 {
                                     "op": "eq",
                                     "field": "Client Abbreviation",
-                                    "value": itgCompany["short-name"],
+                                    "value": itgOrganization["short-name"],
                                     "udf": true
                                 }
                             ]
@@ -248,19 +259,32 @@ app.http('ITGExpiryAutotaskIntegration', {
         if (testType == "Domain Expiry") {
 
             let itgDomainInfo;
-            await itg.get({path: "organizations/" + itgCompany.id + "/relationships/domains", params: {
-                "page[size]": 1000
-            }})
-            .then(result => {
-                if (result && result.data) {
-                    itgDomainInfo = result.data.find(d => d.attributes.name == resourceName);
-                }
-            })
-            .catch(error => {
-                context.error(error);
-            });
 
-            if (itgDomainInfo.attributes.notes && itgDomainInfo.attributes.notes.includes("# Ignore Alerts")) {
+            try {
+                const itgDomains = await itgclient.domains.list({
+                    filters: { organization_id: itgOrganization.id },
+                    page: 1, 
+                    pageSize: 1000
+                })
+
+                itgDomainInfo = itgDomains?.data?.find(d => d.attributes.name == resourceName);
+
+                if (!itgDomainInfo) {
+                    context.error(`Could not get the domains from ITGlue for organization '${organizationName}'.`);
+                }
+            } catch (error) {
+                context.error('API Error getting Domain:', error?.message || error);
+            }
+
+            if (!itgDomainInfo) {
+                context.error(`No domain information found for '${resourceName}'. Exiting...`);
+                return {
+                    status: 404,
+                    body: `No domain information found for '${resourceName}'. Exiting...`
+                };
+            }
+
+            if (itgDomainInfo?.attributes?.notes && itgDomainInfo?.attributes?.notes?.includes("# Ignore Alerts")) {
                 return {
                     body: "The expiring domain '" + resourceName + "' was ignored. Exiting..."
                 };
@@ -294,18 +318,33 @@ app.http('ITGExpiryAutotaskIntegration', {
         } else if (testType == "SSL Expiry") {
 
             let itgSSLInfo;
-            await itg.get({path: "organizations/" + itgCompany.id + "/relationships/expirations", params: {
-                "filter[resource_type_name]": "SslCertificate",
-                "page[size]": 1000
-            }})
-            .then(result => {
-                if (result && result.data) {
-                    itgSSLInfo = result.data.find(d => d.attributes['resource-name'] == resourceName);
+
+            try {
+                const itgExpirations = await itgclient.expirations.list({
+                    filters: { 
+                        organization_id: itgOrganization.id,
+                        resource_type_name: "SslCertificate"
+                    },
+                    page: 1, 
+                    pageSize: 1000
+                })
+
+                itgSSLInfo = itgExpirations?.data?.find(d => d.attributes['resource-name'] == resourceName);
+
+                if (!itgSSLInfo) {
+                    context.error(`Could not find SSL certificate '${resourceName}' in ITGlue data.`);
                 }
-            })
-            .catch(error => {
-                context.error(error);
-            });
+            } catch (error) {
+                context.error('API Error getting SSL certificate:', error?.message || error);
+            }
+
+            if (!itgSSLInfo) {
+                context.error(`No SSL certificate information found for '${resourceName}'. Exiting...`);
+                return {
+                    status: 404,
+                    body: `No SSL certificate information found for '${resourceName}'. Exiting...`
+                };
+            }
 
             var ipAddress = null;
             var certIssuer = null;
@@ -367,15 +406,21 @@ app.http('ITGExpiryAutotaskIntegration', {
             var assetID = match[1];
 
             let flexAssetInfo;
-            await itg.get({path: "flexible_assets/" + assetID})
-            .then(result => {
-                if (result && result.data) {
-                    flexAssetInfo = result.data;
-                }
-            })
-            .catch(error => {
-                context.error(error);
-            });
+
+            try {
+                const itgFlexAssets = await itgclient.flexibleAssets.get(assetID);
+                flexAssetInfo = itgFlexAssets?.data;
+            } catch (error) {
+                context.error('API Error getting Flexible Asset:', error?.message || error);
+            }
+
+            if (!flexAssetInfo) {
+                context.error(`The flexible asset '${resourceName}' was not found in ITG. Exiting...`);
+                return {
+                    status: 404,
+                    body: `The flexible asset '${resourceName}' was not found in ITG. Exiting...`
+                };
+            }
 
             const expiries = {};
             if (flexAssetInfo) {
@@ -537,8 +582,7 @@ const findSoonestFutureDate = (dateObject) => {
     const now = new Date();
     
     // Filter for future dates
-    const futureDates = Object.entries(dateObject)
-        .map(([key, date]) => date)
+    const futureDates = Object.values(dateObject)
         .filter(date => date > now);
 
     // Return null if no future dates exist
